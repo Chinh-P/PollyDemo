@@ -17,15 +17,7 @@ namespace ThirdPartyAPI.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(int id)
         {
-            await Task.Delay(100); 
-            _requestCount++;
-
-            if (_requestCount % 3 == 0)  
-            {
-                return Ok(100);
-            }
-
-            return StatusCode((int)HttpStatusCode.InternalServerError, "Something went wrong");
+            return Ok(100);
         }
     }
 } 
