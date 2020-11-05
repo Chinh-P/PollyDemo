@@ -1,11 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Polly;
+using Polly.Retry;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -15,15 +15,23 @@ namespace InternalAPI.Controllers
     [ApiController]
     public class DemoController : ControllerBase
     {
-        
+
+        readonly AsyncRetryPolicy<HttpResponseMessage> _httpRetryPolicy;
+
+        public DemoController()
+        {
+            _httpRetryPolicy = Policy.HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+                .RetryAsync(3); ;
+        }
+
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(int id)
         {
             var httpClient = GetHttpClient();
             string requestEndpoint = $"NotStableAmazonInventory/{id}";
 
-            HttpResponseMessage response = await httpClient.GetAsync(requestEndpoint);
-            // HttpResponseMessage response = await _httpRetryPolicy.ExecuteAsync(() => httpClient.GetAsync(requestEndpoint));
+           HttpResponseMessage response = await httpClient.GetAsync(requestEndpoint);
+           //HttpResponseMessage response = await _httpRetryPolicy.ExecuteAsync(() => httpClient.GetAsync(requestEndpoint));
 
             if (response.IsSuccessStatusCode)
             {

@@ -20,12 +20,10 @@ namespace ThirdPartyAPI.Controllers
             await Task.Delay(100); 
             _requestCount++;
 
-            //if (_requestCount % 3 == 0) // only one of out four requests will succeed
-            //{
-            //    return Ok(100);
-            //}
-
-            return Ok(100);
+            if (_requestCount % 3 == 0)  
+            {
+                return Ok(100);
+            }
 
             return StatusCode((int)HttpStatusCode.InternalServerError, "Something went wrong");
         }
