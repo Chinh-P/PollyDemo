@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Polly;
+using Polly.CircuitBreaker;
 using Polly.Retry;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
@@ -15,14 +17,32 @@ namespace InternalAPI.Controllers
     [ApiController]
     public class DemoController : ControllerBase
     {
+        private readonly HttpClient _httpClient;
+        private readonly AsyncCircuitBreakerPolicy<HttpResponseMessage> _breakerPolicy;
+
+        readonly AsyncRetryPolicy<HttpResponseMessage> _httpRetryPolicy;
+
+        public DemoController(HttpClient httpClient, AsyncCircuitBreakerPolicy<HttpResponseMessage> breakerPolicy)
+        {
+            _httpClient = httpClient;
+            _breakerPolicy = breakerPolicy;
+            _httpRetryPolicy =
+                Policy.HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+                    .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
+        }
+
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(int id)
         {
-            var httpClient = GetHttpClient();
+            
             string requestEndpoint = $"NotStableAmazonInventory/{id}";
 
-           HttpResponseMessage response = await httpClient.GetAsync(requestEndpoint);
-          
+           
+            HttpResponseMessage response = await _httpRetryPolicy.ExecuteAsync(
+                () => _breakerPolicy.ExecuteAsync(
+                () => _httpClient.GetAsync(requestEndpoint)
+                ));
+
             if (response.IsSuccessStatusCode)
             {
                 int itemsInStock = JsonConvert.DeserializeObject<int>(await response.Content.ReadAsStringAsync());
@@ -32,18 +52,23 @@ namespace InternalAPI.Controllers
             return StatusCode((int)response.StatusCode, response.Content.ReadAsStringAsync());
         }
 
-     
-        /// <summary>
-        /// Note: quick and dirty way, shouldnt do this in production
-        /// </summary>
-        /// <returns></returns>
-        private HttpClient GetHttpClient()
+        [HttpGet("pricing/{id}")]
+        public async Task<IActionResult> GetPricing(int id)
         {
-            var httpClient = new HttpClient();
-            httpClient.BaseAddress = new Uri(@"https://localhost:44367/api/");
-            httpClient.DefaultRequestHeaders.Accept.Clear();
-            httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            return httpClient;
+            string requestEndpoint = $"price/{id}";
+
+            HttpResponseMessage response = await _httpRetryPolicy.ExecuteAsync(
+                () => _breakerPolicy.ExecuteAsync(
+                    () => _httpClient.GetAsync(requestEndpoint)));
+
+            if (response.IsSuccessStatusCode)
+            {
+                decimal priceOfItem = JsonConvert.DeserializeObject<decimal>(await response.Content.ReadAsStringAsync());
+                return Ok($"${priceOfItem}");
+            }
+
+            return StatusCode((int)response.StatusCode, response.Content.ReadAsStringAsync());
         }
+
     }
 }
